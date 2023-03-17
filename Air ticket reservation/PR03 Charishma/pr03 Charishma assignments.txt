@@ -1,0 +1,848 @@
+32. High-value customers
+Select Customers.Customerid,
+       Customers.Companyname,
+       Orders.Orderid,
+       Totalorderamount = Sum(Quantity * Unitprice)
+From Customers
+    Join Orders
+        On Orders.Customerid = Customers.Customerid
+    Join Orderdetails
+        On Orders.Orderid = Orderdetails.Orderid
+Where
+    Year(Orders.Orderdate) = 2016
+Group By Customers.Customerid, Customers.Companyname, Orders.Orderid
+Having Sum(Quantity * Unitprice) > 10000
+Order By Totalorderamount Desc;
+
+33. High-value customers - total orders
+Select Customers.CustomerID, Customers.CompanyName,
+       TotalOrderAmount = SUM(Quantity * UnitPrice)
+From Customers
+    join Orders
+        on Orders.CustomerID = Customers.CustomerID
+    join OrderDetails
+        on Orders.OrderID = OrderDetails.OrderID
+Where  
+    YEAR(Orders.OrderDate) = 2016
+group by Customers.CustomerID, Customers.CompanyName
+having SUM(Quantity * UnitPrice) > 15000
+order by TotalOrderAmount desc;
+34. High-value customers - with discount
+Select Customers.Customerid, Customers.Companyname,
+       Totalwithoutdiscount = Sum(Quantity * Unitprice),
+       Totalwithdiscount = Sum(Quantity * Unitprice * (1-Discount))
+From Customers
+    Join Orders
+        On Orders.Customerid = Customers.Customerid
+    Join Orderdetails
+        On Orders.Orderid = Orderdetails.Orderid
+Where
+    Year(Orders.Orderdate) = 2016
+Group By Customers.Customerid, Customers.Companyname
+Having Sum(Quantity * Unitprice * (1-Discount)) > 10000
+Order By Totalwithdiscount Desc;
+
+35. Month-end orders
+Select Employeeid, Orderid, Orderdate
+From Orders
+Where Eomonth(Orderdate) = Convert(Date, Orderdate)
+Order By Employeeid, Orderid
+
+
+36. Orders with many line items
+Select Top 10 Orderid, Count(Orderid) As Totalorderdetails
+From Orderdetails
+Group By Orderid
+Order By Totalorderdetails Desc
+
+37. Orders - random assortment
+Select  Top 2 Percent Orderid
+From Orders
+Order By Newid()
+
+38. Orders - accidental double-entry
+select distinct OrderID
+from
+    (select OrderID,
+        count(ProductID) over(partition by orderid, quantity) as nl
+    from OrderDetails
+    where Quantity >= 60) As T
+where nl > 1
+order by OrderID
+
+39. Orders - accidental double-entry details
+With DE_Orders(OrderID) As
+    (select distinct OrderID
+    from
+        (select OrderID,
+            count(ProductID) over(partition by orderid, quantity) as nl
+        from OrderDetails
+        where Quantity >= 60) As T
+    where nl > 1)
+select OrderID, ProductID, UnitPrice, QUantity, Discount
+from OrderDetails
+where OrderID in (select OrderID from DE_Orders)
+
+40. Orders - accidental double-entry details, derived table
+41. Late orders
+select OrderID, OrderDate, RequiredDate, ShippedDate
+from Orders
+where ShippedDate >= RequiredDate
+
+42. Late orders - which employees?
+select Orders.EmployeeID, Employees.LastName,
+       count(OrderID) As TotalLateOrders
+from Orders
+join Employees on Orders.EmployeeID = Employees.EmployeeID
+where ShippedDate >= RequiredDate
+group by Orders.EmployeeID,  Employees.LastName
+order by TotalLateOrders desc
+
+43. Late orders vs. total orders
+select  EmployeeID, LastName, TotalOrders, TotalLateOrders
+from
+    (select distinct O.EmployeeID, E.LastName,
+    sum(case when ShippedDate >= RequiredDate then 1 else 0 end)
+        over (partition by O.EmployeeID) As TotalLateOrders,
+    count(O.OrderID) over (partition by O.EmployeeID) As TotalOrders
+    from Orders AS O
+        join Employees AS E
+            on O.EmployeeID = E.EmployeeID) AS T
+where TotalLateOrders > 0
+
+44. Late orders vs. total orders - missing employee
+45. Late orders vs. total orders - fix null
+46. Late orders vs. total orders – percentage
+select  EmployeeID, LastName, TotalOrders, TotalLateOrders,
+    (TotalLateOrders*100.0/TotalOrders) AS PercentLateOrders
+from
+    (select distinct O.EmployeeID, E.LastName,
+    sum(case when ShippedDate >= RequiredDate then 1 else 0 end)
+        over (partition by O.EmployeeID) As TotalLateOrders,
+    count(O.OrderID) over (partition by O.EmployeeID) As TotalOrders
+    from Orders AS O
+        join Employees AS E
+            on O.EmployeeID = E.EmployeeID) AS T
+where TotalLateOrders > 0
+
+47. Late orders vs. total orders - fix decimal
+select  EmployeeID, LastName, TotalOrders, TotalLateOrders,
+        CONVERT(decimal(10,2),(TotalLateOrders*100.0/TotalOrders))
+            AS PercentLateOrders
+from
+    (select distinct O.EmployeeID, E.LastName,
+    sum(case when ShippedDate >= RequiredDate then 1 else 0 end)
+        over (partition by O.EmployeeID) As TotalLateOrders,
+    count(O.OrderID) over (partition by O.EmployeeID) As TotalOrders
+    from Orders AS O
+        join Employees AS E
+            on O.EmployeeID = E.EmployeeID) AS T
+where TotalLateOrders > 0
+
+48. Customer grouping
+With CustomerTotalOrder_2016(CustomerID, CompanyName, TotalOrderAmount) AS
+    (Select Customers.CustomerID, Customers.CompanyName,
+        TotalOrderAmount = SUM(Quantity * UnitPrice)
+    From Customers
+        join Orders
+            on Orders.CustomerID = Customers.CustomerID
+        join OrderDetails
+            on Orders.OrderID = OrderDetails.OrderID
+    Where  
+        YEAR(Orders.OrderDate) = 2016
+    group by Customers.CustomerID, Customers.CompanyName)
+select CustomerID, CompanyName, TotalOrderAmount,
+case
+    when 0 <= TotalOrderAmount AND TotalOrderAmount <= 1000 Then 'Low'
+    when 1000 < TotalOrderAmount AND TotalOrderAmount <= 5000 Then 'Medium'
+    when 5000 < TotalOrderAmount AND TotalOrderAmount <= 10000 Then 'High'
+    when TotalOrderAmount > 10000  Then 'Very High'
+end as CustomerGroup
+from CustomerTotalOrder_2016
+order by CustomerID
+
+49. Customer grouping - fix null
+50. Customer grouping with percentage
+With CustomerTotalOrder_2016(CustomerID, CompanyName, TotalOrderAmount) AS
+    (Select Customers.CustomerID, Customers.CompanyName,
+    TotalOrderAmount = SUM(Quantity * UnitPrice)
+    From Customers
+        join Orders
+            on Orders.CustomerID = Customers.CustomerID
+        join OrderDetails
+            on Orders.OrderID = OrderDetails.OrderID
+        Where  
+            YEAR(Orders.OrderDate) = 2016
+        group by Customers.CustomerID, Customers.CompanyName)
+select distinct
+  CustomerGroup,
+  count(CustomerGroup) over(partition by CustomerGroup) as TotalInGroup,
+  (count(CustomerGroup) over(partition by CustomerGroup))*100.0/(select count(*)
+from CustomerTotalOrder_2016) as PercentageInGroup
+from
+    (select
+    case
+      when 0 <= TotalOrderAmount AND TotalOrderAmount <= 1000 Then 'Low'
+      when 1000 < TotalOrderAmount AND TotalOrderAmount <= 5000 Then 'Medium'
+      when 5000 < TotalOrderAmount AND TotalOrderAmount <= 10000 Then 'High'
+      when TotalOrderAmount > 10000  Then 'Very High'
+    end as CustomerGroup
+    from CustomerTotalOrder_2016) AS T
+order by TotalInGroup desc
+
+51. Customer grouping – flexible
+With CustomerTotalOrder_2016(CustomerID, CompanyName, TotalOrderAmount) AS
+    (Select Customers.CustomerID, Customers.CompanyName,
+        TotalOrderAmount = SUM(Quantity * UnitPrice)
+    From Customers
+        join Orders
+            on Orders.CustomerID = Customers.CustomerID
+        join OrderDetails
+            on Orders.OrderID = OrderDetails.OrderID
+        Where  
+            YEAR(Orders.OrderDate) = 2016
+        group by Customers.CustomerID, Customers.CompanyName)
+select CustomerID, CompanyName, TotalOrderAmount, CustomerGroupName
+from CustomerTotalOrder_2016
+    join CustomerGroupThresholds
+        on (RangeBottom < TotalOrderAmount)
+        and (RangeTop > TotalOrderAmount)
+order by CustomerID
+
+
+
+
+CASE STUDY1:
+SELECT (COUNT(city) - COUNT(DISTINCT city)) AS difference
+    FROM station;
+
+
+
+
+
+
+
+
+CUSTOM EXCEPTIONS:
+
+1)	Create custom exception for user id password
+Password should be 8 characters wide
+User id should not be blank
+
+function CheckPassword(inputtxt) 
+{ 
+var paswd=  /^(?=.*[0-9])(?=.*[!@#$%^&*])[a-zA-Z0-9!@#$%^&*]{7,15}$/;
+if(inputtxt.value.match(paswd)) 
+{ 
+alert('Correct, try another...')
+return true;
+}
+else
+{ 
+alert('Wrong...!')
+return false;
+}
+}  
+
+
+3)	Ticket is free for age<3 years and more than 80 years
+
+class InvalidAgeException (Exception):
+     pass
+number=3
+no=80
+try:
+     input_num=int(input("Enter age:"))
+     if input_num<number:
+         raise InvalidAgeException
+     elif input_num>no:
+         raise InvalidAgeException
+     else:
+         print("Eligible for voting")
+except InvalidAgeException:
+    print("Exception occured:Invalid age")
+
+
+
+import datetime
+
+date_string = '27-1002-31'
+
+
+date_format = '%Y-%m-%d'
+
+
+try:
+    dateObject = datetime.datetime.strptime(date_string, date_format)
+    print(dateObject)
+
+except ValueError:
+   print("Incorrect data format, should be YYYY-MM-DD")
+
+
+PYTHON ASSIGNMENT ON FILES:
+------------------------------------------------------------
+word = "healthy."
+count = 0
+with open("temp.txt", 'r') as f:
+	for line in f:
+		words = line.split()
+		for i in words:
+			if(i==word):
+				count=count+1
+print("Occurrences of the word", word, ":", count)
+
+----------------------------------------------
+print(sorted([1,26,3,9]))
+
+print(sorted("The order is".split(), key=str.lower))
+------------------------------------------------------
+file = open("temp.txt", "rt")
+data = file.read()
+words = data.split()
+
+print('Number of words in text file :', len(words))
+
+   #-------
+sample = {"id":1,"name":"adam","age":"21"}
+print(json.dumps(sample,indent=2))
+#-------------
+import json
+from json import JSONEncoder
+class Vehicle:
+    def __init__(self, name, engine, price):
+        self.name = name
+        self.engine = engine
+        self.price = price
+
+class VehicleEncoder(JSONEncoder):
+        def default(self, o):
+            return o.__dict__
+vehicle = Vehicle("Toyota Rav4", "2.5L", 32000)
+
+print("Encode Vehicle Object into JSON")
+vehicleJson = json.dumps(vehicle, indent=4, cls=VehicleEncoder)
+print(vehicleJson)
+
+
+
+
+
+
+LAMBDA FUNCTIONS
+
+----------------------------------
+def extract_string(str_list1, l):
+    result = list(filter(lambda e: len(e) == l, str_list1))
+    return result
+
+str_list1 = ['Python', 'list', 'exercises', 'practice', 'solution'] 
+print("Original list:")
+print(str_list1)
+l = 8
+print("\nlength of the string to extract:")
+print(l)
+print("\nAfter extracting strings of specified length from the said list:")
+print(extract_string(str_list1 , l))
+
+=--------------------------------------
+def average_tuple(nums):
+    result = tuple(map(lambda x: sum(x) / float(len(x)), zip(*nums)))
+    return result
+
+nums = ((10, 10, 10), (30, 45, 56), (81, 80, 39), (1, 2, 3))
+print ("Original Tuple: ")
+print(nums)
+print("\nAverage value of the numbers of the said tuple of tuples:\n",average_tuple(nums))
+nums = ((1, 1, -5), (30, -15, 56), (81, -60, -39), (-10, 2, 3))
+print ("\nOriginal Tuple: ")
+print(nums)
+print("\nAverage value of the numbers of the said tuple of tuples:\n",average_tuple(nums))
+
+=---------------------------------------------
+r = lambda a : a + 15
+print(r(10))
+r = lambda x, y : x * y
+print(r(12, 4))
+
+------------------------------------------------
+
+students = []
+sec_name = []
+second_low = 0
+n = int(input("Input number of students: "))
+for _ in range(n):
+   s_name = input("Name: ")
+   score = float(input("Grade: "))
+   students.append([s_name,score])
+print("\nNames and Grades of all students:")
+print(students)
+order =sorted(students, key = lambda x: int(x[1]))
+for i in range(n):
+   if order[i][1] != order[0][1]:
+       second_low = order[i][1]
+       break
+print("\nSecond lowest grade: ",second_low)
+sec_student_name = [x[0] for x in order if x[1] == second_low]
+sec_student_name.sort()
+print("\nNames:")
+for s_name in sec_student_name:
+   print(s_name)
+
+
+-----------------------------------------------------------
+
+
+
+
+
+PYTHON JSON
+
+
+
+Exercise 1
+Objective: using data file 'interface-data.json', create output that resembles the following by parsing the included JSON file.
+Interface Status
+================================================================================
+DN                                                 Description           Speed    MTU  
+-------------------------------------------------- --------------------  ------  ------
+topology/pod-1/node-201/sys/phys-[eth1/33]                              inherit   9150 
+topology/pod-1/node-201/sys/phys-[eth1/34]                              inherit   9150 
+topology/pod-1/node-201/sys/phys-[eth1/35]                              inherit   9150 
+File(s) Used:
+1.	interface-data.json
+2.	exer1-intf-table.py
+Exercise 2
+Objective: Use the data from (http://data.maryland.gov/api/views/6jva-hr4v/rows.json?accessType=DOWNLOAD) to create a similar table which displays the average / max number of passengers per month per airline traveling through BWI airport. Format number numbers to 2 decimal places as needed.
+File(s) Used:
+1.	exer2-http-airport-json-parse.py
+
+---------------------------------------------------Answers-----------------------------------------------------
+exercise-1
+import json
+
+jsondata = open('exer1-interface-data.json').read()
+
+json_object = json.loads(jsondata)
+print(
+    "=======================================================================================" "\n"
+    "DN                                                 Description           Speed    MTU" "\n" 
+    "-------------------------------------------------- --------------------  ------  ------")
+imdata = json_object["imdata"]
+for i in imdata:
+        dn = i["l1PhysIf"]["attributes"]["dn"]
+        descr = i["l1PhysIf"]["attributes"]["descr"]
+        speed = i["l1PhysIf"]["attributes"]["speed"]
+        mtu = i["l1PhysIf"]["attributes"]["mtu"]
+        # print fields formatted in columns
+        print("{0:50} {1:20} {2:7} {3:6}".format(dn,descr,speed,mtu))
+
+
+
+exercise-2
+
+import requests
+import json
+url = "http://data.maryland.gov/api/views/6jva-hr4v/rows.json"
+
+response = requests.get(url)
+
+json_response = response.json()
+data = json_response["meta"]["view"]["columns"]
+# display the average / max number of passengers per month per airline traveling through BWI airport
+
+print(
+    "========== ============================== ==================== =========" "\n"
+    "ID         Airline                        Average              Largest " "\n" 
+    "---------- ------------------------------ -------------------- ---------")
+for i in data:
+        if "cachedContents" in i:
+            cached = i["cachedContents"]
+            id = i["id"]
+            name = i["name"]
+            if "average" in cached:
+                avg = i["cachedContents"]["average"]
+                avg = round(float(avg),2)
+
+            else:
+                avg = "-"
+
+            if "largest" in cached:
+                lrg = i["cachedContents"]["largest"]
+
+            else:
+                lrg = "-"
+
+            print("{0:10} {1:30} {2:20} {3:20}".format(id, name, avg, lrg))
+
+
+
+-------------------------
+-------------------------------
+REACT ZIP FILES
+
+
+--------------------------
+CICD
+----------------------------------------------------------------Questions---------------------------------------------------
+
+1.What is Continuous Integration?
+	
+2.What is Continuous Deployment?
+	
+3.Can you describe an example of a CI (and/or CD) process starting the moment a developer submitted a change/PR to a repository?
+	
+4.What is Continuous Delivery?
+	
+5.What is difference between Continuous Delivery and Continuous Deployment?
+	
+6.What CI/CD best practices are you familiar with? Or what do you consider as CI/CD best practice?
+	
+7.You are given a pipeline and a pool with 3 workers: virtual machine, baremetal and a container. How will you decide on which one of them to run the pipeline?
+	
+8.Where do you store CI/CD pipelines? Why?
+	
+9.How do you perform plan capacity for your CI/CD resources? (e.g. servers, storage, etc.)
+	
+10.How would you structure/implement CD for an application which depends on several other applications?
+	
+11.How do you measure your CI/CD quality? Are there any metrics or KPIs you are using for measuring the quality?
+	
+12.What is Jenkins? What have you used it for?
+	
+-------------------------------------------------Answers---------------------------------
+1.Continuous integration refers to the build and unit testing stages of the software release process. Every revision that is committed triggers an automated build and test. With continuous delivery, code changes are automatically built, tested, and prepared for a release to production.
+2.Continuous deployment is a strategy in software development where code changes to an application are released automatically into the production environment. This automation is driven by a series of predefined tests. Once new updates pass those tests, the system pushes the updates directly to the software's users.
+3.There are many answers for such a question, as CI processes vary, depending on the technologies used and the type of the project to where the change was submitted. Such processes can include one or more of the following stages:
+
+Compile
+Build
+Install
+Configure
+Update
+Test
+An example of one possible answer:
+
+A developer submitted a pull request to a project. The PR (pull request) triggered two jobs (or one combined job). One job for running lint test on the change and the second job for building a package which includes the submitted change, and running multiple api/scenario tests using that package. Once all tests passed and the change was approved by a maintainer/core, it’s merged/pushed to the repository. If some of the tests failed, the change will not be allowed to merged/pushed to the repository.
+
+A complete different answer or CI process, can describe how a developer pushes code to a repository, a workflow then triggered to build a container image and push it to the registry. Once in the registry, the k8s cluster is applied with the new changes.
+4.A development strategy used to frequently deliver code to QA and Ops for testing. This entails having a staging area that has production like features where changes can only be accepted for production after a manual review. Because of this human entanglement there is usually a time lag between release and review making it slower and error prone as compared to continous deployment.
+5.Continuous Delivery is a software engineering practice where the code changes are prepared to be released. Continuous Deployment aims at continuously releasing the code changes into the production environment.
+6. Automated process of building, testing and deploying software
+   Commit and test often
+   Testing/Staging environment should be a clone of production environment
+7. Containers are more lightweight than VMs, as their images are measured in megabytes rather than gigabytes. Containers require fewer IT resources to deploy, run, and manage. Containers spin up in milliseconds. Since their order of magnitude is smaller.
+8. There are multiple approaches as to where to store the CI/CD pipeline definitions:
+
+   App Repository – store them in the same repository of the application they are building or testing (perhaps the most popular one)
+   Central Repository – store all organization’s/project’s CI/CD pipelines in one separate repository (perhaps the best approach when multiple teams test the same set of projects and they end up having many pipelines)
+   CI repo for every app repo – you separate CI related code from app code but you don’t put everything in one place (perhaps the worst option due to the maintenance)
+9.The CI/CD pipeline combines continuous integration, delivery and deployment into four major phases: source, build, test and deploy. Each phase uses highly detailed processes, standards, tools and automation.
+10. Code: Checked into the repository.
+    Build: Build is triggered and deployed in a test environment.
+    Test: Automated tests are executed.
+    Deploy: Code is deployed to stage, and production environments.
+11.DevOps organizations can measure and optimize the performance of their CI/CD pipeline by using the following key metrics:
+   Test pass rate. The ratio between passed test cases with the total number of test cases.
+             Number of bugs. 
+             Defect escape rate. 
+             Number of code branches.
+   DevOps organizations monitor their CI/CD pipeline across three groups of metrics:
+             Automation performance
+	     Speed
+	     Quality
+12.Jenkins is an open-source free automation tool used to build and test software projects. The tool makes it painless for developers to integrate changes to the project. Jenkins' primary focus is to keep track of the version control system and initiate and monitor a build system if there are any changes.
+   It is used to continually create and test software projects, making it easier for developers and DevOps engineers to integrate changes to the project and for consumers to get a new build.
+
+-----------------------------------------
+----------------------------------------
+
+
+CODE QUALITY
+
+
+
+1)
+3 is the best of the given options.
+2)
+
+Version four:
+numbers = []
+    def add_number(num): 
+    numbers.append(num)
+ while True:
+ answer = input(&#27;Enter a number: &#27;)
+ if answer != &#27;quit&#27;:
+    add_number(answer)
+ else:
+    break
+ print(&#27;Numbers: %s&#27; % numbers)
+
+3)2nd option
+
+4)
+Violations:
+1. Wildcard imports (from requests import *) are generally discouraged and should be avoided.
+2. The function get_error_message() is missing a return statement at the end, which can lead to unexpected behavior.
+3. The indentation of the else: clause in the get_error_message() function is incorrect.
+4. The main() function is missing an indentation level, which can lead to unexpected behavior.
+
+
+
+
+-----------------------------------------------------------
+------------------------------------------------------------
+DJANGO
+
+
+
+Django
+
+
+
+
+1) Create URL Mapping for the respective project defined
+I. Min 5 URL (decide the URLs based on your project statements
+II. Keep admin URL separately
+III. Use templates for the URL connections
+IV. Define static folder and add CSS files.
+V. Use Bootstrap modules
+VI. Change the admin interface as per your project statements.
+2) Create a ModelForm for AUTHOR{name, book and bookid}
+Add the table &lt;appname&gt;_author into the database.
+3) Render HTML Forms (GET &amp; POST) in Django for the fields fist name and last name
+4) Use Django built-in methods to validate form login page data automatically. Use CSRF tokens.
+
+answers 
+
+I. URL Mapping 
+1. Home Page: /
+2. Authors: /authors/
+3. Author Details: /authors/<author_id>
+4. Admin Login Page: /admin/login
+5. Admin Page: /admin/ 
+
+II. Admin URL Mapping 
+1. Admin Home Page: /admin/ 
+2. Admin Author List: /admin/author/list 
+3. Admin Author Create: /admin/author/create 
+4. Admin Author Update: /admin/author/update/<author_id> 
+5. Admin Author Delete: /admin/author/delete/<author_id>
+
+III. Templates 
+1. Home Page: templates/index.html
+2. Author List: templates/authors.html 
+3. Author Details: templates/author_detail.html 
+4. Admin Login Page: templates/admin/login.html 
+5. Admin Home Page: templates/admin/index.html 
+6. Admin Author List: templates/admin/author_list.html 
+7. Admin Author Create: templates/admin/author_create.html 
+8. Admin Author Update: templates/admin/author_update.html 
+9. Admin Author Delete: templates/admin/author_delete.html
+
+IV. Static Folder 
+Add the below files to the static folder
+1. CSS File: static/css/main.css 
+2. Bootstrap File: static/bootstrap/bootstrap.min.css 
+3. JS File: static/js/main.js
+
+V. Use Bootstrap Modules 
+1. Use the Bootstrap Grid System, Forms, Buttons, and Navbars.
+2. Use the Bootstrap components like Alerts, Modals, and Dropdowns.
+
+VI. Change Admin Interface 
+1. Add an Admin Panel page to manage Authors.
+2. Create a separate page to add, update and delete Authors.
+3. Add additional functionality such as sorting, filtering and pagination.
+
+
+
+2) Create a ModelForm for AUTHOR{name, book and bookid}
+Add the table <appname>_author into the database.
+
+class AuthorForm(ModelForm):
+    class Meta:
+        model = Author
+        fields = ['name', 'book', 'bookid']
+
+
+
+
+3) Render HTML Forms (GET & POST) in Django for the fields fist name and last name
+
+&lt;form action="" method="post"&gt;
+    {% csrf_token %}
+    &lt;div class="form-group"&gt;
+        &lt;label for="firstName"&gt;First Name:&lt;/label&gt;
+        &lt;input type="text" class="form-control" name="firstName" id="firstName"&gt;
+    &lt;/div&gt;
+    &lt;div class="form-group"&gt;
+        &lt;label for="lastName"&gt;Last Name:&lt;/label&gt;
+        &lt;input type="text" class="form-control" name="lastName" id="lastName"&gt;
+    &lt;/div&gt;
+    &lt;button type="submit" class="btn btn-primary"&gt;Submit&lt;/button&gt;
+&lt;/form&gt;
+
+
+
+4) Use Django built-in methods to validate form login page data automatically. Use CSRF tokens.
+
+&lt;form action="" method="post"&gt;
+    {% csrf_token %}
+    &lt;div class="form-group"&gt;
+        &lt;label for="firstName"&gt;First Name:&lt;/label&gt;
+        &lt;input type="text" class="form-control" name="firstName" id="firstName"&gt;
+        {% if form.errors.firstName %}
+            &lt;div class="alert alert-danger"&gt;
+                {{ form.errors.firstName }}
+            &lt;/div&gt;
+        {% endif %}
+    &lt;/div&gt;
+    &lt;div class="form-group"&gt;
+        &lt;label for="lastName"&gt;Last Name:&lt;/label&gt;
+        &lt;input type="text" class="form-control" name="lastName" id="lastName"&gt;
+        {% if form.errors.lastName %}
+            &lt;div class="alert alert-danger"&gt;
+                {{ form.errors.lastName }}
+            &lt;/div&gt;
+        {% endif %}
+    &lt;/div&gt;
+    &lt;button type="submit" class="btn btn-primary"&gt;Submit&lt;/button&gt;
+&lt;/form&gt;
+
+
+
+			Model form
+
+1) Create a model form and write the CRUD queries in the dijango shell
+class sampleModel(models.Model):
+        # fields of the model
+    title = models.CharField(max_length = 200)
+    description = models.TextField()
+    last_modified = models.DateTimeField(auto_now_add = True)
+    
+2) Write a program to upload the txt file and check in the admin view.
+3) Create an Employee model(Ename, EID) and write the into csv file using
+Dynamic CSV and database
+4) Get a string message &quot;Hello How are you &quot; from the user from and print into the pdf
+file.
+
+Answers
+
+1)
+
+# Create a form for the model
+
+from django import forms
+
+class SampleModelForm(forms.ModelForm):
+    class Meta:
+        model = SampleModel
+        fields = '__all__'
+
+# CRUD Queries
+
+# Create
+
+# Create a new object
+new_object = SampleModel.objects.create(title='My object', description='My description')
+
+# Read
+
+# Get all objects
+all_objects = SampleModel.objects.all()
+
+# Get an object by id
+object_by_id = SampleModel.objects.get(id=1)
+
+# Get objects by filter
+filtered_objects = SampleModel.objects.filter(title='My object')
+
+# Update
+
+# Update an object
+updated_object = SampleModel.objects.get(id=1)
+updated_object.title = 'New title'
+updated_object.save()
+
+# Delete
+
+# Delete an object
+deleted_object = SampleModel.objects.get(id=1)
+deleted_object.delete()
+
+2)
+from django.shortcuts import render
+from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.conf import settings
+
+import os
+
+@csrf_exempt
+def upload_file(request):
+    if request.method == 'POST':
+        file = request.FILES['file']
+        filename = file.name
+        path = os.path.join(settings.MEDIA_ROOT, filename)
+        file_url = os.path.join(settings.MEDIA_URL, filename)
+        with open(path, 'wb+') as f:
+            for chunk in file.chunks():
+                f.write(chunk)
+        return HttpResponse(file_url)
+
+# urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('admin/upload/', views.upload_file, name='upload_file'),
+]
+
+3)
+
+
+#models.py
+from django.db import models
+
+class Employee(models.Model):
+    ename = models.CharField(max_length=100)
+    eid = models.IntegerField()
+
+#views.py
+import csv
+from django.http import HttpResponse
+
+def export_employee_csv(request):
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = 'attachment; filename="Employee.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(['Ename', 'EID'])
+
+    employees = Employee.objects.all().values_list('ename', 'eid')
+    for employee in employees:
+        writer.writerow(employee)
+
+    return response
+
+4)
+
+response = input("Please enter a string message: ")
+
+# Create a PDF file
+from reportlab.pdfgen import canvas
+
+# Create a file name
+pdf_file_name = 'message.pdf'
+
+# Create a canvas object
+c = canvas.Canvas(pdf_file_name)
+
+# Add text to the PDF
+c.drawString(50, 750, response)
+
+# Save the PDF
+c.save()
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
